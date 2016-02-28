@@ -1,0 +1,116 @@
+/* ***************************************************************************************************
+// Example sketch from John's DIY Playground
+// to demonstrate the Particle Photon wifi IoT device.
+// Visit http://www.particle.io/ to purchase a Photon of your own
+//
+// This sketch will demonstrate a few basic features of the Photon.
+//   1. It will flash the onboard LED located at pin D7
+//   2. It will report sensor light levels from a photoresistor on pin A5 to the Particle web site
+//   3. It will allow us to control an LED connected to pin D0 remotely
+//
+// Demonstration of this code can be found on my YouTube channel, called John's DIY Playground
+// The channel's URL is http://www.youtube.com/c/johnsdiyplayground
+// Software code examples can be found on my GitHub page at
+// https://github.com/johnsdiyplayground
+// 
+// Hardware Required:
+// 1. Particle Photon
+// 2. LED
+// 3. 220 ohm resistor for LED
+// 4. Photoresistor
+// 5. 1K ohm resistor between pins A5 and ground
+// 6. USB to micro USB cable for powering the Photon
+******************************************************************************************************
+*/
+
+// Define our pins
+int onboardLED = D7;
+int photoResistor = A5;
+int photoResistorPower = A0;
+int externalLED = D0;
+
+// Now we will define how often to flash our onboard LED 
+int blinkLEDtime = 1000;  // 1000 is milliseconds so this means blink on/off in 1 second intervals
+// and we need a way to record the last time we turned the LED on or off
+int lastBlinkTime;
+
+// The next variable defines how often to check the photoresistor's light level
+int photoResistorCheckTime = 10000;  // 10000 milliseconds is 10 seconds
+// and we also record the time we report the photoresistor status with this
+int lastPhotoResistorReport;
+char lightValue[4];   // this is a string where we will actual light value read from the photoresistor
+
+// We don't need to define how often to check commands to turn on/off the external LED.  That's because
+// our Photon is connected to the Particle cloud and checking by itself on a regular basis.
+
+void setup() {
+  // Tell Photon if our pins are inputs or outputs
+  pinMode(onboardLED, OUTPUT);
+  pinMode(photoResistor, INPUT);
+  pinMode(photoResistorPower, OUTPUT);
+  pinMode(externalLED, OUTPUT);
+
+  // Initialize our onboard and external LEDs to start up turned off (set to low)
+  digitalWrite(onboardLED, LOW);
+  digitalWrite(externalLED, LOW);
+  
+  // Turn on power to the photoresistor
+  digitalWrite(photoResistorPower, HIGH);
+  
+  // We are going to declare a Particle.function so that we can turn the external LED on and off from the cloud.
+  Particle.function("led",ledToggle);
+  // The above line is saying that when we ask the cloud for the function "led", it will employ the function ledToggle() below
+
+  // Initialize our timers for the onboard LED and photoresistor using millis which is the Photon's internal clock
+  lastBlinkTime = millis();
+  lastPhotoResistorReport = millis();
+}
+
+void loop() {
+  // check if the onboard LED should be turned on or off
+  if ((millis() - lastBlinkTime) >= blinkLEDtime) {
+      lastBlinkTime = millis();  // update current time for the next time through the loop
+      digitalWrite(onboardLED, !digitalRead(onboardLED));  // this says in one simple line to flip-flop the status of the pin
+  }
+
+  // check if it is time to report the photoresistor's value to the Particle web site
+  if ((millis() - lastPhotoResistorReport) >= photoResistorCheckTime) {
+      lastPhotoResistorReport = millis();   // update current time for the next time through the loop
+      int lightLevel = analogRead(photoResistor);  // we read in the photoResistor level here (value can be 0 to 4095)
+      
+      // now let's classify the light level into one of three categories
+      if (lightLevel < 500) Particle.publish("lightLevel", "dark", 60, PRIVATE);
+      if (lightLevel >= 500 && lightLevel < 900) Particle.publish("lightLevel", "medium", 60, PRIVATE);
+      if (lightLevel >= 900) Particle.publish("lightLevel", "bright", 60, PRIVATE);
+      
+      // publish the actual value of the light level
+      sprintf(lightValue,"%d", lightLevel);   // this converts the value from an integer to a string for publishing
+      Particle.publish("sensorValue", lightValue, 60, PRIVATE);
+  }
+}  // this is the end of the loop
+
+// Now we're going to have a super cool function now that gets called when a matching API request is sent
+// This is the ledToggle function we registered to the "led" Particle.function earlier in the setup above.
+
+int ledToggle(String command) {
+    /* Particle.functions always take a string as an argument and return an integer.
+    Since we can pass a string, it means that we can give the program commands on how the function should be used.
+    In this case, telling the function "on" will turn the external LED on and telling it "off" will turn the LED off.
+    Then, the function returns a value to us to let us know what happened.
+    In this case, it will return 1 for the LED turning on, 0 for the LED turning off,
+    and -1 if we received a totally bogus command that didn't do anything to the LED.
+    */
+
+    if (command=="on") {
+        digitalWrite(externalLED,HIGH);
+        return 1;
+    }
+    else if (command=="off") {
+        digitalWrite(externalLED,LOW);
+        return 0;
+    }
+    else {
+        return -1;
+    }
+}
+// This is the end of the ledToggle function
